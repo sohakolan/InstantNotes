@@ -13,6 +13,7 @@ export type EditorFont =
   | "monaco"
   | "courier";
 export type CaretColor = "accent" | string;
+export type PushFrequency = "manual" | "hourly" | "daily" | "onsave";
 
 export interface Settings {
   vaultPath: string | null;
@@ -21,6 +22,11 @@ export interface Settings {
   gitEnabled: boolean;
   lastNote: string | null;
   recents: string[];
+  // Synchronisation git distante
+  gitRemote: string | null;
+  pushFrequency: PushFrequency;
+  pushTime: string; // "HH:MM" pour la fréquence quotidienne
+  lastPushAt: number | null;
   // Apparence
   theme: Theme;
   accent: string;
@@ -40,6 +46,10 @@ const DEFAULTS: Settings = {
   gitEnabled: true,
   lastNote: null,
   recents: [],
+  gitRemote: null,
+  pushFrequency: "manual",
+  pushTime: "19:00",
+  lastPushAt: null,
   theme: "system",
   accent: "#4f7cff",
   editorFontSize: 15,
@@ -134,6 +144,8 @@ export const app = $state({
   content: "",
   dirty: false,
   saving: false,
+  pushing: false,
+  pushError: "",
   paletteOpen: false,
   settingsOpen: false,
   ready: false,
@@ -143,7 +155,7 @@ let store: Store | null = null;
 
 /** Charge les préférences persistées depuis le disque. */
 export async function loadSettings(): Promise<Settings> {
-  store = await load("settings.json", { autoSave: false });
+  store = await load("settings.json", { autoSave: false, defaults: {} });
   const saved = (await store.get<Partial<Settings>>("settings")) ?? {};
   app.settings = { ...DEFAULTS, ...saved };
   // Migration des anciens raccourcis par défaut.
@@ -163,7 +175,7 @@ export async function loadSettings(): Promise<Settings> {
 
 /** Persiste les préférences courantes. */
 export async function saveSettings(): Promise<void> {
-  if (!store) store = await load("settings.json", { autoSave: false });
+  if (!store) store = await load("settings.json", { autoSave: false, defaults: {} });
   await store.set("settings", $state.snapshot(app.settings));
   await store.save();
 }

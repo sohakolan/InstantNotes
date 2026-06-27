@@ -160,7 +160,7 @@
           nodes={tree}
           current={currentNote}
           draggable
-          {onOpen}
+          onOpen={openNote}
           {onMove}
           {onDelete}
         />

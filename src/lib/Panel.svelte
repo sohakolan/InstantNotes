@@ -8,10 +8,12 @@
   import FileTree from "$lib/FileTree.svelte";
   import CommandPalette from "$lib/CommandPalette.svelte";
   import Settings from "$lib/Settings.svelte";
+  import Logo from "$lib/Logo.svelte";
 
   let saveTimer: ReturnType<typeof setTimeout> | null = null;
   let gitTimer: ReturnType<typeof setTimeout> | null = null;
   const GIT_IDLE_MS = 120_000; // commit après 2 min d'inactivité
+  const SCHED_TICK_MS = 30_000; // cadence de vérification du planning de push
 
   let rootEl = $state<HTMLDivElement>();
 
@@ -43,6 +45,10 @@
     }
     app.ready = true;
     triggerSlide();
+
+    // Planificateur de push : un tick régulier décide s'il faut pousser.
+    // (Panel est la racine de l'app, jamais démontée → l'intervalle vit toute la session.)
+    setInterval(checkSchedule, SCHED_TICK_MS);
   });
 
   // Rejoue l'animation de glissement (au démarrage et à chaque ouverture du panneau).
@@ -83,7 +89,53 @@
   function scheduleCommit() {
     if (!app.settings.gitEnabled) return;
     if (gitTimer) clearTimeout(gitTimer);
-    gitTimer = setTimeout(commitNow, GIT_IDLE_MS);
+    gitTimer = setTimeout(autoSyncNow, GIT_IDLE_MS);
+  }
+
+  function canPush(): boolean {
+    return !!(app.settings.gitEnabled && app.settings.vaultPath && app.settings.gitRemote);
+  }
+
+  // Pousse vers le dépôt distant. `commit` = effectuer un commit préalable.
+  async function pushNow(commit = true) {
+    if (!canPush() || app.pushing) return;
+    app.pushing = true;
+    app.pushError = "";
+    try {
+      if (commit) await commitNow();
+      await api.gitPush();
+      app.settings.lastPushAt = Date.now();
+      saveSettings();
+    } catch (e) {
+      app.pushError = String(e);
+      console.error("git push:", e);
+    } finally {
+      app.pushing = false;
+    }
+  }
+
+  // Commit d'inactivité ; pousse dans la foulée si la fréquence est « à chaque sauvegarde ».
+  async function autoSyncNow() {
+    await commitNow();
+    if (app.settings.pushFrequency === "onsave") await pushNow(false);
+  }
+
+  // Appelé à chaque tick : déclenche un push selon la fréquence choisie.
+  function checkSchedule() {
+    if (!canPush() || app.pushing) return;
+    const { pushFrequency, pushTime, lastPushAt } = app.settings;
+    if (pushFrequency === "hourly") {
+      if (!lastPushAt || Date.now() - lastPushAt >= 3_600_000) pushNow();
+    } else if (pushFrequency === "daily") {
+      const [hh, mm] = pushTime.split(":").map(Number);
+      const target = new Date();
+      target.setHours(hh, mm, 0, 0);
+      // Tolérant aux ticks manqués (Mac en veille) : si l'heure cible du jour est
+      // passée et qu'aucun envoi n'a eu lieu depuis, on pousse. Pas de double envoi.
+      if (Date.now() >= target.getTime() && (!lastPushAt || lastPushAt < target.getTime())) {
+        pushNow();
+      }
+    }
   }
 
   async function chooseVault() {
@@ -168,7 +220,7 @@
     } else if (e.key === "Escape" && !app.paletteOpen && !app.settingsOpen) {
       e.preventDefault();
       flushSave();
-      commitNow();
+      autoSyncNow();
       api.hidePanel();
     }
   }
@@ -184,7 +236,7 @@
     <div class="splash"><span class="spinner"></span></div>
   {:else if !app.settings.vaultPath}
     <div class="welcome">
-      <div class="logo">⌘</div>
+      <Logo size={72} />
       <h1>InstantNotes</h1>
       <p>Choisis un dossier qui contiendra tes notes markdown.</p>
       <button class="primary" onclick={chooseVault}>Choisir un vault…</button>
@@ -225,6 +277,14 @@
         <span class="state">
           {#if app.saving}Enregistrement…{:else if app.dirty}Modifié{:else}Enregistré{/if}
           {#if app.settings.gitEnabled}<span class="git" title="Git activé">⎇</span>{/if}
+          {#if app.settings.gitRemote}
+            <span
+              class="sync"
+              class:pushing={app.pushing}
+              class:err={!!app.pushError}
+              title={app.pushError || (app.pushing ? "Envoi en cours…" : "Synchronisé avec le dépôt distant")}
+            >⇡</span>
+          {/if}
         </span>
       </footer>
     </div>
@@ -244,7 +304,11 @@
 {/if}
 
 {#if app.settingsOpen}
-  <Settings onClose={() => (app.settingsOpen = false)} onChangeVault={chooseVault} />
+  <Settings
+    onClose={() => (app.settingsOpen = false)}
+    onChangeVault={chooseVault}
+    onPushNow={() => pushNow()}
+  />
 {/if}
 
 <style>
@@ -363,6 +427,28 @@
   .git {
     opacity: 0.7;
   }
+  .sync {
+    opacity: 0.7;
+    color: var(--accent);
+  }
+  .sync.pushing {
+    animation: sync-pulse 0.9s ease-in-out infinite;
+  }
+  .sync.err {
+    color: #ef4444;
+    opacity: 1;
+  }
+  @keyframes sync-pulse {
+    0%,
+    100% {
+      opacity: 0.3;
+      transform: translateY(0);
+    }
+    50% {
+      opacity: 1;
+      transform: translateY(-1px);
+    }
+  }
 
   /* Accueil & splash */
   .welcome,
@@ -375,17 +461,6 @@
     gap: 14px;
     text-align: center;
     padding: 28px;
-  }
-  .logo {
-    width: 56px;
-    height: 56px;
-    display: grid;
-    place-items: center;
-    font-size: 26px;
-    color: white;
-    background: linear-gradient(135deg, var(--accent), var(--accent-strong));
-    border-radius: 16px;
-    box-shadow: 0 10px 30px var(--accent-soft);
   }
   .welcome h1 {
     font-size: 20px;

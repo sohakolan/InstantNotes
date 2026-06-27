@@ -27,3 +27,8 @@ export const setShortcut = (toggle: string, newnote: string, widthPct: number) =
 // Git (local)
 export const gitInit = () => invoke<void>("git_init");
 export const gitCommit = () => invoke<boolean>("git_commit");
+
+// Git distant (push via le `git` système)
+export const gitSetRemote = (url: string) => invoke<void>("git_set_remote", { url });
+export const gitGetRemote = () => invoke<string | null>("git_get_remote");
+export const gitPush = () => invoke<string>("git_push");

@@ -1,14 +1,81 @@
 <script lang="ts">
-  import { app, saveSettings, applyAppearance, ACCENT_PRESETS, FONTS, type Theme } from "./state.svelte";
+  import {
+    app,
+    saveSettings,
+    applyAppearance,
+    ACCENT_PRESETS,
+    FONTS,
+    shiftVariant,
+    type Theme,
+    type PushFrequency,
+  } from "./state.svelte";
   import * as api from "./ipc";
 
-  let { onClose, onChangeVault }: { onClose: () => void; onChangeVault: () => void } = $props();
+  let {
+    onClose,
+    onChangeVault,
+    onPushNow,
+  }: { onClose: () => void; onChangeVault: () => void; onPushNow: () => void } = $props();
 
   const THEMES: { id: Theme; label: string }[] = [
     { id: "system", label: "Système" },
     { id: "light", label: "Clair" },
     { id: "dark", label: "Sombre" },
   ];
+
+  const FREQS: { id: PushFrequency; label: string }[] = [
+    { id: "manual", label: "Manuel" },
+    { id: "hourly", label: "Chaque heure" },
+    { id: "daily", label: "Quotidien" },
+    { id: "onsave", label: "À chaque sauvegarde" },
+  ];
+
+  // ── Synchronisation git distante ──
+  let remoteInput = $state(app.settings.gitRemote ?? "");
+  let linking = $state(false);
+  let linkError = $state("");
+
+  async function linkRemote() {
+    const url = remoteInput.trim();
+    if (!url) return;
+    linking = true;
+    linkError = "";
+    try {
+      await api.gitSetRemote(url);
+      app.settings.gitRemote = url;
+      app.settings.gitEnabled = true; // le push s'appuie sur les commits git
+      await saveSettings();
+    } catch (e) {
+      linkError = String(e);
+    } finally {
+      linking = false;
+    }
+  }
+
+  async function unlinkRemote() {
+    app.settings.gitRemote = null;
+    app.settings.pushFrequency = "manual";
+    remoteInput = "";
+    await saveSettings();
+  }
+
+  function setFreq(f: PushFrequency) {
+    app.settings.pushFrequency = f;
+    saveSettings();
+  }
+
+  function setPushTime(v: string) {
+    app.settings.pushTime = v;
+    saveSettings();
+  }
+
+  function lastPushLabel(): string {
+    const t = app.settings.lastPushAt;
+    if (!t) return "Jamais poussé";
+    const d = new Date(t);
+    const p = (n: number) => String(n).padStart(2, "0");
+    return `Dernier envoi : ${p(d.getDate())}/${p(d.getMonth() + 1)} à ${p(d.getHours())}:${p(d.getMinutes())}`;
+  }
 
   // Applique immédiatement + persiste les changements d'apparence.
   function updateAppearance(patch: Partial<typeof app.settings>) {
@@ -75,7 +142,7 @@
   async function apply() {
     error = "";
     try {
-      await api.setShortcut(shortcut, widthPct);
+      await api.setShortcut(shortcut, shiftVariant(shortcut), widthPct);
       app.settings.shortcut = shortcut;
       app.settings.panelWidthPct = widthPct;
       await saveSettings();
@@ -228,21 +295,27 @@
       <div class="caret-row">
         <span class="sub">Glissement fluide</span>
         <button
-          class="toggle"
+          class="switch"
           class:on={app.settings.caretSmooth}
+          role="switch"
+          aria-checked={app.settings.caretSmooth}
+          aria-label="Glissement fluide"
           onclick={() => updateAppearance({ caretSmooth: !app.settings.caretSmooth })}
         >
-          {app.settings.caretSmooth ? "Activé" : "Désactivé"}
+          <span class="knob"></span>
         </button>
       </div>
       <div class="caret-row">
         <span class="sub">Clignotement</span>
         <button
-          class="toggle"
+          class="switch"
           class:on={app.settings.caretBlink}
+          role="switch"
+          aria-checked={app.settings.caretBlink}
+          aria-label="Clignotement"
           onclick={() => updateAppearance({ caretBlink: !app.settings.caretBlink })}
         >
-          {app.settings.caretBlink ? "Activé" : "Désactivé"}
+          <span class="knob"></span>
         </button>
       </div>
     </section>
@@ -251,10 +324,82 @@
 
     <section class="inline">
       <span>Sauvegarde git automatique</span>
-      <button class="toggle" class:on={app.settings.gitEnabled} onclick={toggleGit}>
-        {app.settings.gitEnabled ? "Activée" : "Désactivée"}
+      <button
+        class="switch"
+        class:on={app.settings.gitEnabled}
+        role="switch"
+        aria-checked={app.settings.gitEnabled}
+        aria-label="Sauvegarde git automatique"
+        onclick={toggleGit}
+      >
+        <span class="knob"></span>
       </button>
     </section>
+
+    <div class="divider"></div>
+
+    <section>
+      <span class="seclabel">Synchronisation (push git)</span>
+      {#if !app.settings.gitRemote}
+        <input
+          class="text-input"
+          type="text"
+          placeholder="git@github.com:vous/notes.git"
+          bind:value={remoteInput}
+          onkeydown={(e) => e.key === "Enter" && linkRemote()}
+        />
+        <button
+          class="primary sm"
+          onclick={linkRemote}
+          disabled={linking || !remoteInput.trim()}
+        >
+          {linking ? "Liaison…" : "Lier le dépôt"}
+        </button>
+        {#if linkError}<p class="error">{linkError}</p>{/if}
+        <p class="hint">Utilise le <code>git</code> du système (clés SSH / identifiants déjà configurés).</p>
+      {:else}
+        <div class="remote">
+          <span class="remote-url" title={app.settings.gitRemote}>{app.settings.gitRemote}</span>
+          <button class="ghost sm" onclick={unlinkRemote}>Délier</button>
+        </div>
+
+        <span class="sub-label">Fréquence d'envoi</span>
+        <div class="freq">
+          {#each FREQS as f}
+            <button
+              class:active={app.settings.pushFrequency === f.id}
+              onclick={() => setFreq(f.id)}
+            >
+              {f.label}
+            </button>
+          {/each}
+        </div>
+
+        {#if app.settings.pushFrequency === "daily"}
+          <div class="caret-row">
+            <label for="pt" class="sub">Heure quotidienne</label>
+            <input
+              id="pt"
+              class="time-input"
+              type="time"
+              value={app.settings.pushTime}
+              onchange={(e) => setPushTime(e.currentTarget.value)}
+            />
+          </div>
+        {/if}
+
+        <div class="push-row">
+          <span class="push-status" class:err={!!app.pushError}>
+            {#if app.pushing}Envoi en cours…{:else if app.pushError}Échec : {app.pushError}{:else}{lastPushLabel()}{/if}
+          </span>
+          <button class="primary sm" onclick={onPushNow} disabled={app.pushing}>
+            Pousser
+          </button>
+        </div>
+      {/if}
+    </section>
+
+    <div class="divider"></div>
 
     <section class="inline">
       <span class="vault" title={app.settings.vaultPath ?? ""}>
@@ -437,7 +582,6 @@
     width: 100%;
     accent-color: var(--accent);
   }
-  .toggle,
   .ghost {
     border: 1px solid var(--border);
     background: var(--hover);
@@ -447,10 +591,129 @@
     border-radius: 8px;
     cursor: pointer;
   }
-  .toggle.on {
-    background: var(--accent-soft);
-    color: var(--accent);
+
+  /* Interrupteur façon iOS */
+  .switch {
+    flex-shrink: 0;
+    width: 40px;
+    height: 24px;
+    padding: 2px;
+    border: none;
+    border-radius: 999px;
+    background: var(--border-strong);
+    cursor: pointer;
+    transition: background 0.18s ease;
+  }
+  .switch .knob {
+    display: block;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+    transition: transform 0.18s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .switch.on {
+    background: var(--accent);
+  }
+  .switch.on .knob {
+    transform: translateX(16px);
+  }
+
+  /* Synchronisation git */
+  .text-input,
+  .time-input {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--text);
+    background: var(--hover);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 9px 10px;
+  }
+  .text-input {
+    width: 100%;
+  }
+  .text-input:focus,
+  .time-input:focus {
+    outline: none;
     border-color: var(--accent);
+  }
+  .remote {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .remote-url {
+    flex: 1;
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 500;
+    opacity: 0.85;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .sub-label {
+    font-size: 12px;
+    font-weight: 600;
+    opacity: 0.7;
+    margin-top: 2px;
+  }
+  .freq {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4px;
+    background: var(--hover);
+    padding: 3px;
+    border-radius: 9px;
+  }
+  .freq button {
+    border: none;
+    background: transparent;
+    color: var(--text);
+    font-size: 12px;
+    font-weight: 500;
+    padding: 7px 8px;
+    border-radius: 7px;
+    cursor: pointer;
+    transition: background 0.12s, box-shadow 0.12s;
+  }
+  .freq button.active {
+    background: var(--elevated);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+    font-weight: 600;
+  }
+  .push-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-top: 2px;
+  }
+  .push-status {
+    font-size: 11px;
+    opacity: 0.6;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .push-status.err {
+    color: #ef4444;
+    opacity: 1;
+  }
+  .primary.sm {
+    padding: 7px 14px;
+    font-size: 12px;
+    border-radius: 8px;
+  }
+  .primary.sm:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
+  .ghost.sm {
+    padding: 5px 10px;
+    font-size: 11px;
   }
   .x {
     border: none;

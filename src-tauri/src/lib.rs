@@ -130,6 +130,9 @@ pub fn run() {
             shortcut::set_shortcut,
             git::git_init,
             git::git_commit,
+            git::git_set_remote,
+            git::git_get_remote,
+            git::git_push,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
