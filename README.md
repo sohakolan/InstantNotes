@@ -32,8 +32,9 @@ local.
 brew install --cask sohakolan/instantnotes/instant-notes
 ```
 
-> L'app n'est pas signée/notarisée : au 1er lancement, fais clic droit → Ouvrir, ou
-> Réglages Système › Confidentialité et sécurité › « Ouvrir quand même ».
+> L'app n'est pas signée/notarisée par Apple. Le cask retire automatiquement la mise en
+> quarantaine pour éviter l'erreur « InstantNotes est endommagé ». Si elle apparaît malgré
+> tout, exécute : `xattr -cr /Applications/InstantNotes.app` puis relance l'app.
 
 ## Développement
 
