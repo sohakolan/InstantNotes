@@ -1,0 +1,150 @@
+:root {
+  /* Accent (surchargé en ligne par les réglages) + dérivés automatiques */
+  --accent: #4f7cff;
+  --accent-strong: color-mix(in srgb, var(--accent), #000 14%);
+  --accent-soft: color-mix(in srgb, var(--accent) 16%, transparent);
+
+  --radius: 10px;
+  --radius-lg: 14px;
+  --gap: 10px;
+
+  --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace;
+  --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+
+  /* Typo de l'éditeur (surchargée en ligne par les réglages) */
+  --editor-font-size: 15px;
+  --editor-font-family: var(--sans);
+}
+
+/* ---- Surfaces & texte : thème clair (défaut) ---- */
+:root,
+:root[data-theme="light"] {
+  --text: #1d1d20;
+  --text-dim: rgba(29, 29, 32, 0.55);
+  --border: rgba(0, 0, 0, 0.07);
+  --border-strong: rgba(0, 0, 0, 0.12);
+  --hover: rgba(0, 0, 0, 0.045);
+  --panel-tint: 246, 246, 248;
+  --panel-solid: #f6f6f8;
+  --elevated: #ffffff;
+  --shadow: 0 24px 60px rgba(0, 0, 0, 0.28);
+}
+
+/* ---- Thème sombre : forcé, ou « système » quand l'OS est sombre ---- */
+:root[data-theme="dark"] {
+  --text: #ececef;
+  --text-dim: rgba(236, 236, 239, 0.5);
+  --border: rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(255, 255, 255, 0.14);
+  --hover: rgba(255, 255, 255, 0.06);
+  --panel-tint: 30, 30, 34;
+  --panel-solid: #1e1e22;
+  --elevated: #2a2a30;
+  --shadow: 0 24px 60px rgba(0, 0, 0, 0.5);
+}
+@media (prefers-color-scheme: dark) {
+  :root[data-theme="system"],
+  :root:not([data-theme]) {
+    --text: #ececef;
+    --text-dim: rgba(236, 236, 239, 0.5);
+    --border: rgba(255, 255, 255, 0.08);
+    --border-strong: rgba(255, 255, 255, 0.14);
+    --hover: rgba(255, 255, 255, 0.06);
+    --panel-tint: 30, 30, 34;
+    --panel-solid: #1e1e22;
+    --elevated: #2a2a30;
+    --shadow: 0 24px 60px rgba(0, 0, 0, 0.5);
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow: hidden;
+  /* La fenêtre Tauri est transparente : on pose un voile translucide net. */
+  background: rgba(var(--panel-tint), 0.82);
+  backdrop-filter: saturate(180%) blur(30px);
+  -webkit-backdrop-filter: saturate(180%) blur(30px);
+}
+
+body > div {
+  height: 100%;
+}
+
+button {
+  font-family: inherit;
+  color: inherit;
+}
+
+/* Scrollbars fines et discrètes */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 8px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-dim);
+  background-clip: content-box;
+}
+
+/* Caret de l'éditeur (couleur, épaisseur, glissement, clignotement personnalisables) */
+.cm-cursor,
+.cm-dropCursor {
+  border-left-color: var(--caret-color, var(--accent)) !important;
+  border-left-width: var(--caret-width, 2px) !important;
+  transition:
+    left 90ms cubic-bezier(0.22, 1, 0.36, 1),
+    top 90ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+:root[data-caret-smooth="false"] .cm-cursor,
+:root[data-caret-smooth="false"] .cm-dropCursor {
+  transition: none;
+}
+:root[data-caret-blink="false"] .cm-cursorLayer {
+  animation: none !important;
+}
+
+/* Entrées réutilisables */
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes overlay-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes slide-in-right {
+  from {
+    opacity: 0;
+    transform: translateX(26px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
