@@ -1,6 +1,6 @@
 [package]
 name = "instant-notes"
-version = "0.1.0"
+version = "0.2.1"
 description = "Pense-bête markdown rapide pour macOS"
 authors = ["sohane"]
 edition = "2021"
@@ -19,7 +19,9 @@ tauri-plugin-dialog = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # Local git only : pas de https/ssh, donc pas de dépendance openssl.
-git2 = { version = "0.20", default-features = false }
+# vendored-libgit2 : compile libgit2 en statique dans le binaire, sinon l'app
+# se lie au libgit2 de Homebrew (absent/Team ID différent → « app endommagée »).
+git2 = { version = "0.20", default-features = false, features = ["vendored-libgit2"] }
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-global-shortcut = "2"
